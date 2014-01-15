@@ -39,13 +39,13 @@ parameters:
   ConfSMRegName: {Description: Subscription Manager registration username, Type: String, MinLength: '1',
     MaxLength: '255', Default: username}
   ConfSMRegPass: {Description: Subscription Manager registration password, Type: String, MinLength: '1',
-    MaxLength: '255', Default: password}
+    MaxLength: '255', Default: password, hidden: true}
   ConfSMRegPool: {Description: Pool ID for OpenShift subscription, Type: String, MinLength: '1',
     MaxLength: '255', Default: none}
   ConfRHNRegName: {Description: RHN registration username, Type: String, MinLength: '1',
     MaxLength: '255', Default: username}
   ConfRHNRegPass: {Description: RHN registration password, Type: String, MinLength: '1',
-    MaxLength: '255', Default: password}
+    MaxLength: '255', Default: password, hidden:true}
   ConfRHNRegAK: {Description: RHN activation key for OpenShift subscription, Type: String, MinLength: '1',
     MaxLength: '255', Default: activationkey}
   ConfRHELRepoBase: {Description: RHEL Repo Base, Type: String, MinLength: '1',
