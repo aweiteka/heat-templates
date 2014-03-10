@@ -4,6 +4,9 @@ OpenShift Enterprise templates
 
 This directory contains files for deploying OpenShift Enterprise to an OpenStack environment via heat.
 
+* For 1 broker/1 node deployment, see below
+* For highly available distributed deployment, see `openshift-enterprise/heat/neutron/highly-available <https://github.com/openstack/heat-templates/tree/master/openshift-enterprise/heat/neutron/highly-available>`_
+
 It includes the following files:
 
 * `OpenShift.yaml` - heat template for launching OpenShift Enterprise with a single broker server and a single node server
