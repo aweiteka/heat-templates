@@ -1,0 +1,128 @@
+heat_template_version: 2013-05-23
+description: Pulp server
+parameters:
+  key_name:
+    description: Name of an existing keypair to enable SSH access to the instances
+    type: string
+  server_flavor:
+    description: Flavor of server
+    type: string
+    default: m1.medium
+  vol_size:
+    description: Cinder volume size (GB)
+    type: number
+    default: 80
+  image:
+    description: image name
+    type: string
+  pulp_repo:
+    description: pulp repository
+    type: string
+    default: "http://repos.fedorapeople.org/repos/pulp/pulp/fedora-pulp.repo"
+  public_net_id:
+    type: string
+    description: >
+      ID of public network for which floating IP addresses will be allocated
+  private_net_id:
+    type: string
+    description: ID of private network into which servers get deployed
+  private_subnet_id:
+    type: string
+    description: ID of private sub network into which servers get deployed
+
+resources:
+  security_grp:
+    type: AWS::EC2::SecurityGroup
+    properties:
+      GroupDescription: firewall rules
+      SecurityGroupIngress:
+      - {IpProtocol: tcp, FromPort: '22', ToPort: '22', CidrIp: 0.0.0.0/0}
+      - {IpProtocol: tcp, FromPort: '80', ToPort: '80', CidrIp: 0.0.0.0/0}
+      - {IpProtocol: tcp, FromPort: '443', ToPort: '443', CidrIp: 0.0.0.0/0}
+      - {IpProtocol: tcp, FromPort: '5671', ToPort: '5672', CidrIp: 0.0.0.0/0}
+
+  instance_port:
+    type: OS::Neutron::Port
+    properties:
+      security_groups: [{ get_resource: security_grp }]
+      network_id: { get_param: private_net_id }
+      fixed_ips:
+        - subnet_id: { get_param: private_subnet_id }
+
+  instance_floating_ip:
+    type: OS::Neutron::FloatingIP
+    properties:
+      floating_network_id: { get_param: public_net_id }
+      port_id: { get_resource: instance_port }
+
+  wait_handle:
+    type: AWS::CloudFormation::WaitConditionHandle
+
+  wait_condition:
+    type: AWS::CloudFormation::WaitCondition
+    properties:
+      Handle:
+        Ref: wait_handle
+      Timeout: '6000'
+
+  volume:
+    type: OS::Cinder::Volume
+    properties:
+      name: instance_volume
+      description: persistent storage volume
+      size: { get_param: vol_size }
+
+  attach_vol:
+    type: OS::Cinder::VolumeAttachment
+    properties:
+      instance_uuid: { get_resource: instance }
+      mountpoint: "/dev/vdb"
+      volume_id: { get_resource: volume }
+
+  instance:
+    type: OS::Nova::Server
+    depends_on: wait_condition
+    properties:
+      name: instance
+      image: { get_param: image }
+      flavor: { get_param: server_flavor }
+      key_name: { get_param: key_name }
+      networks:
+        - port: { get_resource: instance_port }
+      security_groups: [{ get_resource: security_grp }]
+      user_data:
+        str_replace:
+          template: |
+            #!/bin/bash -x
+
+            export CONF_BROKER_IP_ADDR=P_FLOATING_IP
+            parted --script /dev/vdb -- mklabel msdos
+            parted --script /dev/vdb -- mkpart primary 1024 -1s
+            partx -a /dev/vdb
+            mkfs.ext4 /dev/vdb1
+            mkdir -p /var/lib/pulp/content
+            mount /dev/vdb1 /var/lib/pulp/content
+            echo "/dev/vdb1 /var/lib/pulp/content ext4 defaults" >> /etc/fstab
+            curl P_PULP_REPO -o /etc/yum.repos.d/pulp.repo
+            yum update -y
+            yum groupinstall pulp-server -y
+            sed -i 's/# url: tcp:\/\/localhost:5672/url: tcp:\/\/P_FLOATING_IP:5672/' server.conf
+
+            service mongod start
+            chkconfig mongod on
+            service qpidd start
+            chkconfig qpidd on
+            pulp-manage-db
+            service httpd start
+            chkconfig httpd on
+
+            /usr/bin/cfn-signal -e 0 -s "setup complete" -i "P_FLOATING_IP" "P_WAIT_HANDLE"
+
+          params:
+            P_PULP_REPO: { get_param: pulp_repo }
+            P_FLOATING_IP: { get_attr: [ instance_floating_ip, floating_ip_address ] }
+            P_WAIT_HANDLE: { get_resource: wait_handle }
+outputs:
+  floating_ip:
+    description: floating IP address
+    value: { get_attr: [ instance_floating_ip, floating_ip_address ] }
